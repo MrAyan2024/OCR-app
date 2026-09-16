@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Free OCR Web App</title>
+    <!-- Tesseract.js CDN for OCR -->
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+    <style>
+        /* Responsive & Clean UI Design */
+        * { box-sizing: border-box; }
+        body {
+            font-family: Arial, sans-serif;
+            background: #f4f7f6;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 800px;
+            width: 100%;
+            background: #fff;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.1);
+            align-self: flex-start;
+        }
+        h1 { text-align: center; color: #333; margin-bottom: 5px; }
+        .subtitle { text-align: center; color: #666; margin-bottom: 25px; font-size: 14px; }
+        
+        /* Upload Area */
+        .upload-area {
+            border: 2px dashed #007bff;
+            padding: 40px 20px;
+            text-align: center;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: 0.3s;
+            background: #f8f9fa;
+        }
+        .upload-area:hover { background: #e9ecef; }
+        .upload-area p { margin: 10px 0; color: #555; }
+        #fileInput { display: none; }
+        
+        /* Image Preview */
+        #imagePreview {
+            max-width: 100%;
+            max-height: 300px;
+            display: none;
+            margin: 20px auto;
+            border-radius: 8px;
+            border: 1px solid #ddd;
+        }
+        
+        /* Buttons & Progress */
+        .btn {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 12px;
+            font-size: 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 15px;
+            font-weight: bold;
+            transition: 0.2s;
+        }
+        .btn:hover:not(:disabled) { background: #0056b3; }
+        .btn:disabled { background: #aaa; cursor: not-allowed; }
+        
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #eee;
+            border-radius: 4px;
+            margin-top: 15px;
+            overflow: hidden;
+            display: none;
+        }
+        .progress { height: 100%; background: #28a745; width: 0%; transition: width 0.2s; }
+        
+        /* Warning Message */
+        .warning {
+            background: #fff3cd;
+            color: #856404;
+            padding: 15px;
+            border-radius: 6px;
+            margin-top: 20px;
+            display: none;
+            text-align: center;
+            font-weight: bold;
+            border: 1px solid #ffeeba;
+        }
+        
+        /* Output Area (Times New Roman) */
+        .output-area { margin-top: 25px; display: none; }
+        .output-area h3 { margin-bottom: 10px; color: #333; }
+        #extractedText {
+            width: 100%;
+            min-height: 300px;
+            padding: 20px;
+            /* Enforcing Times New Roman as requested */
+            font-family: 'Times New Roman', Times, serif; 
+            font-size: 18px;
+            line-height: 1.6;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            resize: vertical;
+            background: #fcfcfc;
+            color: #000;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Image to Text OCR</h1>
+    <p class="subtitle">Upload an image to extract text. Content remains exactly unchanged.</p>
+    
+    <label class="upload-area" id="uploadArea">
+        <p>📁 <strong>Click to upload an image</strong></p>
+        <p style="font-size: 12px; color: #888;">(Supports JPG, PNG, etc.)</p>
+        <input type="file" id="fileInput" accept="image/*">
+    </label>
+    
+    <img id="imagePreview" alt="Image Preview">
+    
+    <button class="btn" id="processBtn" disabled>Extract Text</button>
+    
+    <div class="progress-bar" id="progressBar">
+        <div class="progress" id="progress"></div>
+    </div>
+    
+    <div class="warning" id="warningBox">
+        ⚠️ Image is too blur. Please reupload a clearer image.
+    </div>
+    
+    <div class="output-area" id="outputArea">
+        <h3>Extracted Text:</h3>
+        <textarea id="extractedText" readonly></textarea>
+    </div>
+</div>
+
+<script>
+    const fileInput = document.getElementById('fileInput');
+    const uploadArea = document.getElementById('uploadArea');
+    const imagePreview = document.getElementById('imagePreview');
+    const processBtn = document.getElementById('processBtn');
+    const warningBox = document.getElementById('warningBox');
+    const outputArea = document.getElementById('outputArea');
+    const extractedText = document.getElementById('extractedText');
+    const progressBar = document.getElementById('progressBar');
+    const progress = document.getElementById('progress');
+
+    let selectedFile = null;
+
+    // Handle File Selection
+    fileInput.addEventListener('change', (e) => {
+        if (e.target.files && e.target.files[0]) {
+            selectedFile = e.target.files[0];
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                imagePreview.src = event.target.result;
+                imagePreview.style.display = 'block';
+                processBtn.disabled = false;
+                warningBox.style.display = 'none';
+                outputArea.style.display = 'none';
+            };
+            reader.readAsDataURL(selectedFile);
+        }
+    });
+
+    // Blur Detection Algorithm (Laplacian Variance)
+    function getBlurScore(img) {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        // Downsample to 100x100 for fast processing
+        const w = 100, h = 100; 
+        canvas.width = w; canvas.height = h;
+        ctx.drawImage(img, 0, 0, w, h);
+        
+        const data = ctx.getImageData(0, 0, w, h).data;
+        let gray = [];
+        // Convert to grayscale
+        for(let i=0; i<data.length; i+=4) {
+            gray.push(0.299*data[i] + 0.587*data[i+1] + 0.114*data[i+2]);
+        }
+        
+        // Calculate variance of Laplacian (measures sharpness/edges)
+        let sum = 0, sumSq = 0, count = 0;
+        for(let y=1; y<h-1; y++) {
+            for(let x=1; x<w-1; x++) {
+                let idx = y*w + x;
+                let lap = gray[idx-w] + gray[idx-1] + gray[idx+1] + gray[idx+w] - 4*gray[idx];
+                sum += lap;
+                sumSq += lap*lap;
+                count++;
+            }
+        }
+        let mean = sum / count;
+        return (sumSq / count) - (mean * mean);
+    }
+
+    // Process Button Click
+    processBtn.addEventListener('click', async () => {
+        if (!selectedFile) return;
+
+        // 1. Check for Blur
+        const img = new Image();
+        img.src = imagePreview.src;
+        await new Promise(resolve => img.onload = resolve);
+
+        const blurScore = getBlurScore(img);
+        console.log("Blur Score:", blurScore); // Lower = more blurry. Threshold is ~60.
+        
+        if (blurScore < 60) { 
+            warningBox.style.display = 'block';
+            outputArea.style.display = 'none';
+            return;
+        }
+
+        // 2. Run OCR
+        warningBox.style.display = 'none';
+        processBtn.disabled = true;
+        progressBar.style.display = 'block';
+        processBtn.textContent = "Processing...";
+
+        try {
+            const result = await Tesseract.recognize(
+                imagePreview.src,
+                'eng', // English language
+                {
+                    logger: m => {
+                        if (m.status === 'recognizing text') {
+                            progress.style.width = (m.progress * 100) + '%';
+                        }
+                    }
+                }
+            );
+            
+            // 3. Display Result
+            extractedText.value = result.data.text;
+            outputArea.style.display = 'block';
+        } catch (error) {
+            console.error(error);
+            alert("An error occurred during OCR processing.");
+        } finally {
+            processBtn.disabled = false;
+            processBtn.textContent = "Extract Text";
+            progressBar.style.display = 'none';
+            progress.style.width = '0%';
+        }
+    });
+</script>
+
+</body>
+</html>
