@@ -140,7 +140,7 @@
     </div>
 
     <label class="upload-area" id="uploadArea">
-        <p>📁 <strong>Click to upload Image or PDF</strong></p>
+        <p> <strong>Click to upload Image or PDF</strong></p>
         <p style="font-size: 12px; color: #888;">(Supports JPG, PNG, PDF)</p>
         <input type="file" id="fileInput" accept="image/*,application/pdf">
     </label>
@@ -160,7 +160,7 @@
     <div class="output-area" id="outputArea">
         <div class="output-header">
             <h3 style="margin: 0;">Extracted Text:</h3>
-            <button class="copy-btn" id="copyBtn">📋 Copy Text</button>
+            <button class="copy-btn" id="copyBtn"> Copy Text</button>
         </div>
         <textarea id="extractedText" readonly></textarea>
     </div>
@@ -213,24 +213,16 @@
         if (lang === 'hin') extractedText.classList.add('font-hindi');
     });
 
-    // Clean unnecessary line breaks while preserving paragraphs
     function cleanTextFormatting(text) {
         if (!cleanTextCheckbox.checked) return text;
         
         return text
-            // Replace multiple newlines with double newline (paragraph break)
             .replace(/\n{3,}/g, '\n\n')
-            // Join lines that are part of the same paragraph (single newline)
             .replace(/([^\n])\n([^\n])/g, '$1 $2')
-            // Remove spaces before Bengali punctuation
             .replace(/\s+([।,;:])/g, '$1')
-            // Remove spaces after opening brackets
             .replace(/([\(\["'])\s+/g, '$1')
-            // Remove spaces before closing brackets
             .replace(/\s+([\)\]"'])/g, '$1')
-            // Clean up multiple spaces
             .replace(/ {2,}/g, ' ')
-            // Trim each line
             .split('\n')
             .map(line => line.trim())
             .join('\n')
@@ -272,26 +264,26 @@
             }
         }
 
-        // Better parameters for Bengali/Hindi conjunct recognition
-        const params = {
-            tessedit_pageseg_mode: 6, // Assume uniform block of text (better for paragraphs)
-            preserve_interword_spaces: 1,
-            tessedit_char_whitelist: lang === 'ben' 
-                ? 'অআইঈউঊঋএঐওঔকখগঘঙচছজঝঞটঠডঢণতথদধনপফবভমযরলশষসহড়ঢ়য়ৠ০১২৩৪৫৬৭৮৯ংঃঁঁ্ািীুূৃেৈোৌৢৣ'
-                : lang === 'hin'
-                ? 'अआइईउऊऋएऐओऔकखगघङचछजझञटठडढणतथदधनपफबभमयरलवशषसहॠॡ०१२३४५६७८९ंःँऽािीुूृेैोौॗॢॣ्'
-                : undefined
-        };
-
-        const result = await Tesseract.recognize(src, lang, {
+        // Create worker with proper language loading
+        const worker = await Tesseract.createWorker(lang, 1, {
             logger: m => {
                 if (m.status === 'recognizing text') {
                     progress.style.width = (m.progress * 100) + '%';
                 }
-            },
-            ...params
+                console.log(m);
+            }
         });
-        return result.data.text;
+
+        // Set PSM mode for better paragraph handling
+        await worker.setParameters({
+            tessedit_pageseg_mode: 6,
+            preserve_interword_spaces: 1
+        });
+
+        const { data: { text } } = await worker.recognize(src);
+        await worker.terminate();
+        
+        return text;
     }
 
     processBtn.addEventListener('click', async () => {
@@ -300,7 +292,7 @@
         warningBox.style.display = 'none';
         processBtn.disabled = true;
         progressBar.style.display = 'block';
-        processBtn.textContent = "Processing...";
+        processBtn.textContent = "Loading language data...";
         extractedText.value = "";
         
         const lang = langSelect.value;
@@ -314,7 +306,7 @@
                 for (let i = 1; i <= pdf.numPages; i++) {
                     processBtn.textContent = `Processing PDF Page ${i}/${pdf.numPages}...`;
                     const page = await pdf.getPage(i);
-                    const viewport = page.getViewport({ scale: 3.0 }); // Increased from 2.0 to 3.0
+                    const viewport = page.getViewport({ scale: 3.0 });
                     
                     const canvas = document.createElement('canvas');
                     const ctx = canvas.getContext('2d');
@@ -331,7 +323,6 @@
                 finalText = await processSingleImage(imagePreview.src, lang);
             }
             
-            // Apply text cleaning
             extractedText.value = cleanTextFormatting(finalText);
             outputArea.style.display = 'block';
             
@@ -341,7 +332,7 @@
                 outputArea.style.display = 'none';
             } else {
                 console.error(error);
-                alert("An error occurred. If it's a PDF, it might be password protected or corrupted.");
+                alert("Error: " + error.message);
             }
         } finally {
             processBtn.disabled = false;
