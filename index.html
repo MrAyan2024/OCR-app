@@ -154,7 +154,7 @@
     </div>
     
     <div class="warning" id="warningBox">
-        ⚠️ Image is too blur. Please reupload a clearer image.
+        ️ Image is too blur. Please reupload a clearer image.
     </div>
     
     <div class="output-area" id="outputArea">
@@ -264,17 +264,21 @@
             }
         }
 
-        // Create worker with proper language loading
+        // Create worker with explicit language loading
         const worker = await Tesseract.createWorker(lang, 1, {
             logger: m => {
-                if (m.status === 'recognizing text') {
+                console.log(m);
+                if (m.status === 'loading language traineddata') {
+                    processBtn.textContent = `Loading ${lang} language data...`;
+                } else if (m.status === 'initializing tesseract') {
+                    processBtn.textContent = 'Initializing OCR engine...';
+                } else if (m.status === 'recognizing text') {
                     progress.style.width = (m.progress * 100) + '%';
                 }
-                console.log(m);
             }
         });
 
-        // Set PSM mode for better paragraph handling
+        // Set parameters for better text recognition
         await worker.setParameters({
             tessedit_pageseg_mode: 6,
             preserve_interword_spaces: 1
