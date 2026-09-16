@@ -3,11 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Free OCR Web App</title>
-    <!-- Tesseract.js CDN for OCR -->
+    <title>Multi-Language OCR & PDF Reader</title>
+    
+    <!-- Tesseract.js for OCR -->
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+    <!-- PDF.js for reading PDF files -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    
+    <!-- Google Fonts for authentic Bengali and Hindi rendering -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Bengali:wght@400;700&family=Noto+Sans+Devanagari:wght@400;700&display=swap" rel="stylesheet">
+
     <style>
-        /* Responsive & Clean UI Design */
         * { box-sizing: border-box; }
         body {
             font-family: Arial, sans-serif;
@@ -30,7 +38,11 @@
         h1 { text-align: center; color: #333; margin-bottom: 5px; }
         .subtitle { text-align: center; color: #666; margin-bottom: 25px; font-size: 14px; }
         
-        /* Upload Area */
+        .controls { display: flex; gap: 10px; margin-bottom: 20px; }
+        .controls select {
+            flex: 1; padding: 10px; border-radius: 6px; border: 1px solid #ccc; font-size: 14px;
+        }
+
         .upload-area {
             border: 2px dashed #007bff;
             padding: 40px 20px;
@@ -41,10 +53,8 @@
             background: #f8f9fa;
         }
         .upload-area:hover { background: #e9ecef; }
-        .upload-area p { margin: 10px 0; color: #555; }
         #fileInput { display: none; }
         
-        /* Image Preview */
         #imagePreview {
             max-width: 100%;
             max-height: 300px;
@@ -54,7 +64,6 @@
             border: 1px solid #ddd;
         }
         
-        /* Buttons & Progress */
         .btn {
             background: #007bff;
             color: white;
@@ -66,67 +75,64 @@
             width: 100%;
             margin-top: 15px;
             font-weight: bold;
-            transition: 0.2s;
         }
         .btn:hover:not(:disabled) { background: #0056b3; }
         .btn:disabled { background: #aaa; cursor: not-allowed; }
         
         .progress-bar {
-            width: 100%;
-            height: 8px;
-            background: #eee;
-            border-radius: 4px;
-            margin-top: 15px;
-            overflow: hidden;
-            display: none;
+            width: 100%; height: 8px; background: #eee; border-radius: 4px;
+            margin-top: 15px; overflow: hidden; display: none;
         }
         .progress { height: 100%; background: #28a745; width: 0%; transition: width 0.2s; }
         
-        /* Warning Message */
         .warning {
-            background: #fff3cd;
-            color: #856404;
-            padding: 15px;
-            border-radius: 6px;
-            margin-top: 20px;
-            display: none;
-            text-align: center;
-            font-weight: bold;
+            background: #fff3cd; color: #856404; padding: 15px; border-radius: 6px;
+            margin-top: 20px; display: none; text-align: center; font-weight: bold;
             border: 1px solid #ffeeba;
         }
         
-        /* Output Area (Times New Roman) */
         .output-area { margin-top: 25px; display: none; }
-        .output-area h3 { margin-bottom: 10px; color: #333; }
         #extractedText {
             width: 100%;
             min-height: 300px;
             padding: 20px;
-            /* Enforcing Times New Roman as requested */
-            font-family: 'Times New Roman', Times, serif; 
             font-size: 18px;
-            line-height: 1.6;
+            line-height: 1.8;
             border: 1px solid #ddd;
             border-radius: 6px;
             resize: vertical;
             background: #fcfcfc;
             color: #000;
+            /* Default font */
+            font-family: 'Times New Roman', Times, serif; 
         }
+        
+        /* Specific font classes for languages */
+        .font-bengali { font-family: 'Noto Sans Bengali', sans-serif !important; font-size: 20px !important; }
+        .font-hindi { font-family: 'Noto Sans Devanagari', sans-serif !important; font-size: 20px !important; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>Image to Text OCR</h1>
-    <p class="subtitle">Upload an image to extract text. Content remains exactly unchanged.</p>
+    <h1>Universal OCR & PDF Reader</h1>
+    <p class="subtitle">Supports Images, PDFs, Multiple Languages & Handwriting</p>
     
+    <div class="controls">
+        <select id="langSelect">
+            <option value="eng">English</option>
+            <option value="ben">Bengali (বাংলা)</option>
+            <option value="hin">Hindi (हिन्दी)</option>
+        </select>
+    </div>
+
     <label class="upload-area" id="uploadArea">
-        <p>📁 <strong>Click to upload an image</strong></p>
-        <p style="font-size: 12px; color: #888;">(Supports JPG, PNG, etc.)</p>
-        <input type="file" id="fileInput" accept="image/*">
+        <p>📁 <strong>Click to upload Image or PDF</strong></p>
+        <p style="font-size: 12px; color: #888;">(Supports JPG, PNG, PDF)</p>
+        <input type="file" id="fileInput" accept="image/*,application/pdf">
     </label>
     
-    <img id="imagePreview" alt="Image Preview">
+    <img id="imagePreview" alt="Preview">
     
     <button class="btn" id="processBtn" disabled>Extract Text</button>
     
@@ -145,8 +151,10 @@
 </div>
 
 <script>
+    // Initialize PDF.js worker
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
     const fileInput = document.getElementById('fileInput');
-    const uploadArea = document.getElementById('uploadArea');
     const imagePreview = document.getElementById('imagePreview');
     const processBtn = document.getElementById('processBtn');
     const warningBox = document.getElementById('warningBox');
@@ -154,99 +162,144 @@
     const extractedText = document.getElementById('extractedText');
     const progressBar = document.getElementById('progressBar');
     const progress = document.getElementById('progress');
+    const langSelect = document.getElementById('langSelect');
 
     let selectedFile = null;
+    let isPdf = false;
 
     // Handle File Selection
     fileInput.addEventListener('change', (e) => {
         if (e.target.files && e.target.files[0]) {
             selectedFile = e.target.files[0];
-            const reader = new FileReader();
-            reader.onload = (event) => {
-                imagePreview.src = event.target.result;
-                imagePreview.style.display = 'block';
-                processBtn.disabled = false;
-                warningBox.style.display = 'none';
-                outputArea.style.display = 'none';
-            };
-            reader.readAsDataURL(selectedFile);
+            isPdf = selectedFile.type === 'application/pdf';
+            
+            if (!isPdf) {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    imagePreview.src = event.target.result;
+                    imagePreview.style.display = 'block';
+                };
+                reader.readAsDataURL(selectedFile);
+            } else {
+                imagePreview.style.display = 'none'; // Hide preview for PDFs to save memory
+            }
+            
+            processBtn.disabled = false;
+            warningBox.style.display = 'none';
+            outputArea.style.display = 'none';
         }
     });
 
-    // Blur Detection Algorithm (Laplacian Variance)
+    // Update Output Font based on Language Selection
+    langSelect.addEventListener('change', () => {
+        extractedText.className = ''; // Reset classes
+        const lang = langSelect.value;
+        if (lang === 'ben') extractedText.classList.add('font-bengali');
+        if (lang === 'hin') extractedText.classList.add('font-hindi');
+    });
+
+    // Blur Detection (Laplacian Variance)
     function getBlurScore(img) {
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
-        // Downsample to 100x100 for fast processing
         const w = 100, h = 100; 
         canvas.width = w; canvas.height = h;
         ctx.drawImage(img, 0, 0, w, h);
         
         const data = ctx.getImageData(0, 0, w, h).data;
         let gray = [];
-        // Convert to grayscale
         for(let i=0; i<data.length; i+=4) {
             gray.push(0.299*data[i] + 0.587*data[i+1] + 0.114*data[i+2]);
         }
         
-        // Calculate variance of Laplacian (measures sharpness/edges)
         let sum = 0, sumSq = 0, count = 0;
         for(let y=1; y<h-1; y++) {
             for(let x=1; x<w-1; x++) {
                 let idx = y*w + x;
                 let lap = gray[idx-w] + gray[idx-1] + gray[idx+1] + gray[idx+w] - 4*gray[idx];
-                sum += lap;
-                sumSq += lap*lap;
-                count++;
+                sum += lap; sumSq += lap*lap; count++;
             }
         }
         let mean = sum / count;
         return (sumSq / count) - (mean * mean);
     }
 
-    // Process Button Click
+    // Process OCR for a single Image/Canvas
+    async function processSingleImage(src, lang) {
+        // 1. Blur check (only for actual images, PDFs usually have sharp digital text)
+        if (!isPdf) {
+            const img = new Image();
+            img.src = src;
+            await new Promise(resolve => img.onload = resolve);
+            if (getBlurScore(img) < 60) {
+                throw new Error("BLUR_DETECTED");
+            }
+        }
+
+        // 2. Run Tesseract
+        const result = await Tesseract.recognize(src, lang, {
+            logger: m => {
+                if (m.status === 'recognizing text') {
+                    progress.style.width = (m.progress * 100) + '%';
+                }
+            }
+        });
+        return result.data.text;
+    }
+
+    // Main Process Button
     processBtn.addEventListener('click', async () => {
         if (!selectedFile) return;
 
-        // 1. Check for Blur
-        const img = new Image();
-        img.src = imagePreview.src;
-        await new Promise(resolve => img.onload = resolve);
-
-        const blurScore = getBlurScore(img);
-        console.log("Blur Score:", blurScore); // Lower = more blurry. Threshold is ~60.
-        
-        if (blurScore < 60) { 
-            warningBox.style.display = 'block';
-            outputArea.style.display = 'none';
-            return;
-        }
-
-        // 2. Run OCR
         warningBox.style.display = 'none';
         processBtn.disabled = true;
         progressBar.style.display = 'block';
         processBtn.textContent = "Processing...";
+        extractedText.value = "";
+        
+        const lang = langSelect.value;
+        let finalText = "";
 
         try {
-            const result = await Tesseract.recognize(
-                imagePreview.src,
-                'eng', // English language
-                {
-                    logger: m => {
-                        if (m.status === 'recognizing text') {
-                            progress.style.width = (m.progress * 100) + '%';
-                        }
-                    }
+            if (isPdf) {
+                // --- PDF PROCESSING ---
+                const arrayBuffer = await selectedFile.arrayBuffer();
+                const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                
+                for (let i = 1; i <= pdf.numPages; i++) {
+                    processBtn.textContent = `Processing PDF Page ${i}/${pdf.numPages}...`;
+                    const page = await pdf.getPage(i);
+                    const viewport = page.getViewport({ scale: 2.0 }); // Scale 2.0 for better OCR
+                    
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    canvas.height = viewport.height;
+                    canvas.width = viewport.width;
+                    
+                    await page.render({ canvasContext: ctx, viewport: viewport }).promise;
+                    
+                    // Process the rendered canvas
+                    const pageText = await processSingleImage(canvas, lang);
+                    finalText += pageText + "\n\n--- Page ${i} ---\n\n";
+                    progress.style.width = ((i / pdf.numPages) * 100) + '%';
                 }
-            );
+            } else {
+                // --- IMAGE PROCESSING ---
+                finalText = await processSingleImage(imagePreview.src, lang);
+            }
             
             // 3. Display Result
-            extractedText.value = result.data.text;
+            extractedText.value = finalText.trim();
             outputArea.style.display = 'block';
+            
         } catch (error) {
-            console.error(error);
-            alert("An error occurred during OCR processing.");
+            if (error.message === "BLUR_DETECTED") {
+                warningBox.style.display = 'block';
+                outputArea.style.display = 'none';
+            } else {
+                console.error(error);
+                alert("An error occurred. If it's a PDF, it might be password protected or corrupted.");
+            }
         } finally {
             processBtn.disabled = false;
             processBtn.textContent = "Extract Text";
